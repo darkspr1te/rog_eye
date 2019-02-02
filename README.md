@@ -16,20 +16,26 @@
     printTemp();
     printFanSpeed();
     printClockRatio();
+	printRatio();
+	printClock();
 
  * How this works
- * The Arduino's I2c Pins A5/PC5 (CLK) and A4/PC4 (DATA) plus a ENABLE A5/PC3/PIN 17 for pinmode pin is connected to the ROG_EXT pins
+ * The Arduino's I2c Pins A5/PC5 (CLK) and A4/PC4 (DATA) plus a ENABLE A5/PC3/PIN 17 for pinmode, this pin is connected to the ROG_EXT pins 5(SDA),7(SCL),4(ENABLE)
+ * See Diagram rog_ext_bb.png
  * bring ENABLE high and the motherboard exsposes the internal i2c bus,
 
  * Anyway, so once ENABLE is HIGH then the arduino responds to I2C slave addres 0x4A, the motherboard writes to this at regular intervals, some values get updated more often
  * Sometimes high cpu usage will delay updates, use avereaging for sensors that may jump large values if delayed
  * 
- * currently the Arduino device act's as a I2C memory write only device, two memmory arrays up to 0xff are available, one can be compare to the other for simple value change monitoring
+ * currently the Arduino device act's as a I2C memory write only device, two memory arrays up to 0xff are available, one can be compare to the other for simple value change monitoring
  * Data is written to the memory[MEM_SIZE] buffer, current set at MEM_SIZE=0xff 
- * Known Addresses are :-
+
 
 Address conversions Between Busppirate sniffer and Arduino I2C, Address 0x4A in arduino code with slave mode is seen as 0x94 write and 0x95 read on a buspirate sniff
-
+ 
+ * Known Addresses are :-
+ *
+ *
 typedef struct {
     int addr;
     char bytes;
@@ -97,25 +103,28 @@ Right Side (USB11) //Note often only the upper USB 1-4 row is connected to anyth
 */
 
 ```
-CPU:Arduino Compatible Device Modded for 3.3V
+CPU:Arduino Compatible Device Modded for 3.3V (old screen from a broken RGB Gobi lamp with DMX 512 function !!!, screen has built in arduino chip and buttons , bonus )
+
 
 ```
 
 ###To Do
 
 - [x] Basic bring up and working theory
-- [x] Blow up CPU in testing so other dont have too
+- [x] Blow up CPU in testing so other's dont have too :-(
+- [x] Prove theory and provide working test code & schematic 
 - [ ] Add more sensors
 - [ ] Add lcd code 
 
-- [ ] add schematics in pdf format 
+- [x] add schematics in png format 
 - [ ] Add additional protocols
-  - [ ] Switch PE
+  - [ ] Switch PE ratio
   - [ ] Switch CPU ratio etc See https://www.asus.com/Motherboard-Accessories/OC-Panel-II/
+  - [ ] Add power on via event 
 
 - [ ] EEPROM saving preference
 
-
+- [ ] Tidy up the code , remove testing data 
 
 
 Tested device 
@@ -127,8 +136,8 @@ Asus Front Panel/Front Base [URL]https://www.asus.com/Motherboard-Accessories/RO
 ```
 About Author
 Name: darkspr1te
-location: Zambia Africa
-Hobbies: Reverse engineer products faulty code so the user can fix it
+location: Zambia,  Africa
+Hobbies: Reverse engineer products faulty code so the user can fix it, less e-waste , re-use old products no longer supported 
 
 This reasearch is not cheap, this git commit alone cost me a motherboard and cpu with my mistakes. How ever I have done that so you dont have too, 
 Out of the box the program is safe to use 
