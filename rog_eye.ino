@@ -6,7 +6,7 @@
 #include <SPI.h>
 
 #include <Wire.h>
-
+#define ROG_VERSION 0.15
 #define CPU_TYPE AMD
 
 #if CPU_TYPE == AMD
@@ -29,10 +29,20 @@
 #define TOPEID   0x06
 
 #define ROG_EXT 0x4a
+//currently only known 
 #define ADDRESSES 11
 
-//50 (MISO), 51 (MOSI), 52 (SCK), 53 (SS).
+
+
+
+byte buf1, buf2;
+#define MEM_SIZE 0x1fe
+byte memory[MEM_SIZE] {};
+byte alt_memory[MEM_SIZE] {};
+
+
 /*
+ * pin Outs At ROG Connector
 1 - grn - 18 cs 
 2 - red - 21 clk
 3 - org - 20 data/MOSI
@@ -41,7 +51,7 @@
 6 - pur - 16 backlight 
  */
 /*
- * for mega use pins
+ * for AT MEGA use pins
 #define TFT_MOSI 51  // Data out
 #define TFT_SCLK 52  // Clock out
 #define TFT_CS 53 // CS
@@ -51,6 +61,36 @@
 #define TFT_BACKLIGHT 8
 
 for uno etc use :- clk = 13,12 MISO,11 MOSI, cs = 10 
+for ESP use 
+D5,D6,D7,D8 plus one for back light like D1
+*/
+
+#define TFT_CS   10
+#define TFT_DC   9
+#define TFT_RST  7
+#define TFT_BACKLIGHT 8
+
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC,TFT_RST);
+//i2cdump 1 0x4a
+/*
+ * example dump found online
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f    0123456789abcdef
+00: 00 0f 00 00 00 00 00 04 00 00 00 00 00 00 00 00    .?.....?........
+10: 00 00 06 00 00 00 00 00 00 00 00 00 00 00 00 00    ..?.............
+20: 25 25 3f 20 00 00 00 00 03 e8 03 e8 0b b8 01 90    %%? ....????????
+30: 01 90 00 c8 01 68 00 96 01 68 01 68 02 d0 01 2c    ??.??h.??h?h???,
+40: 01 15 01 14 01 54 00 96 02 2a 00 f0 01 e0 00 64    ?????T.??*.???.d
+50: 22 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    "...............
+60: 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00    .?..............
+70: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+90: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+b0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+c0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+d0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+e0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
+f0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................
 */
 typedef struct {
     int addr;
@@ -62,11 +102,14 @@ typedef struct {
 addrStruct addresses[ADDRESSES] = {
     {0x00, 1, TOPEID, "OPEID"},
 //    {0x01, 1
+ //   [0x06 ,1, POSTMODE,"POST MODE"},
 //    {0x07, 1
+//0x10 location Valid for Intel Only it seems or C6H and prior boards. possible candidate is 0x22
     {0x10, 1, TQCODE, "QCODE"},
 //    {0x12, 1
     {0x20, 1, TRATIO, "CPU Ratio"},
 //    {0x22, 1
+// 0x22 could be AMD qcode location 
     {0x24, 1, TRATIO, "Cache Ratio"},
     {0x28, 2, TCLOCK, "BCLK"},
 //    {0x2a, 2 ; PCIEBCLK?
@@ -88,20 +131,9 @@ addrStruct addresses[ADDRESSES] = {
 //    {0x4c, 2
     {0x50, 1, TTEMP,  "CPU Temp"},
     {0x60, 2, TFAN,   "CPU Fanspeed"},
+// {0xff,1,UNKWN,"UNKWN"},
 };
 
-#define TFT_CS   10
-#define TFT_DC   9
-#define TFT_RST  7
-#define TFT_BACKLIGHT 8
-
-
-Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC,TFT_RST);
-
-byte buf1, buf2;
-#define MEM_SIZE 0xff
-byte memory[MEM_SIZE] {};
-byte alt_memory[MEM_SIZE] {};
 
 float p = 3.1415926;
 
@@ -112,42 +144,44 @@ void receiveEvent(int howMany) {
 
   int ROG_addr = 0;
   int ROG_value =0;
-
-
-   //Serial.println("Start Event "); 
+//The ROG_EXT enable boards write to device 0x4A with the values of cpu v,temp etc. from 0x00 to 0xff , if it's two bit i2c address then i've not figured the write past 0xff trigger yet
+//normally receive two bytes from i2c , first is memory location and rest is data
+//arduino acts as I2c memory device and then we read that memory[x] back and display it, simple really , dont need the Elmor/Overlay.live labs snake oil  
+ 
+ //For Debug, send serial command every time the Motherboard makes a request 
+ //Serial.println("Start Event "); 
   while(Wire.available())    // slave may send less than requested
     { 
-  
-    myvars[bytes] = Wire.read();
-    
-
- 
-    
-    bytes++;
+      myvars[bytes] = Wire.read();
+      bytes++;
     }
+  //first byte is memory location that the Motherboard is writing to , second is value 
   memory[myvars[0]]=myvars[1];
+
+  //debug output
    // Serial.println();
-//Serial.println("End Event ");
+  //Serial.println("End Event ");
 
 }
 void dump_memory()
 {
-  Serial.println("  -=0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08 0x09 0x0A 0x0B 0x0C 0x0D 0x0E 0x0F=-");
- Serial.print("0");//that one dodgy zero, will fix later but this dirty fix i hope
-   tft.fillScreen(ST77XX_BLACK);  
+  //not really usefull function on small screen, works best on larger screen to see all/most of memory locations change or use serial and a good terminal app that support ansi functions (BBS RULEZ)
+  
+  tft.fillScreen(ST77XX_BLACK);  
   tft.setCursor(0, 0);
   tft.setTextColor(ST77XX_WHITE);
+  //my screen did not have enought space, but it's here for other screens
   tft.print("00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F");
   for (int row=0;row<0x10;row++)
   {
+    //some debug
     //Serial.print(memory[row],HEX);
    // Serial.print(row*0x10,HEX);
-  //  Serial.print(" :");
-//   Serial.print(PrintHex8(memory,row*0x10,0x10));
- //   Serial.println("");
+   //  Serial.print(" :");
+   //   Serial.print(PrintHex8(memory,row*0x10,0x10));
+   //   Serial.println("");
 
   tft.setTextWrap(true);
-
   tft.print(memory[row],HEX);
   tft.print(row*0x10,HEX);
   tft.print(":");
@@ -156,37 +190,11 @@ void dump_memory()
   
 }
 
-void draw_grid()
-{
-  tft.setTextSize(1);
-  tft.setCursor(0, 0);
-//tft.drawRect(tft.width()/2 -x/2, tft.height()/2 -x/2 , x, x, color);
-/*
-  for (int x=0;x > tft.width();x+=6)
-  {
-    tft.drawFastVLine( x, 1, x*5,ST77XX_WHITE);  
-  }
-*/
-  delay(1000);
-    for (int16_t x=0; x < tft.width(); x+=11) {
-    //tft.drawLine(0, 0, x, tft.height()-1, ST77XX_WHITE);
-    tft.drawFastVLine( x, 1, tft.height()-1,ST77XX_RED); 
-    delay(0);
-  }
-
-    for (int row=0;row<9;row++)
-  {
-
-  tft.setTextWrap(true);
-  tft.print(memory[row],HEX);
-  tft.print(row*0x10,HEX);
-  //tft.print(":");
-
-  }
-}
 
 void display_knowns()
 {
+  //test routine to display most known values
+  //lower section displays unknown memeory locations 
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   tft.setTextSize(1);
   tft.setCursor(0, 0);
@@ -196,8 +204,8 @@ void display_knowns()
   tft.print("DRAM V");tft.print(((memory[0x48] * VDIV1) + (memory[0x49] * VDIV2)), 4);
   
   tft.setCursor(0,20);
-   tft.print("CPU FAN RPM ");tft.print((memory[0x60] << 8 | memory[0x61]));
-
+  tft.print("CPU FAN RPM ");tft.print((memory[0x60] << 8 | memory[0x61]));
+//a little fun with some colours start with highest number then work down if using lazy IF chains, bad programmer btw :-) 
   if (memory[0x50]>70)
   {
      tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
@@ -210,20 +218,19 @@ void display_knowns()
   else 
   if (memory[0x50]>50)
   {
-     tft.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+    tft.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
     tft.setCursor(0,30);
-  tft.print("CPU Temp C ");
-  tft.print(memory[0x50]);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    tft.print("CPU Temp C ");
+    tft.print(memory[0x50]);
+    tft.print(" ");
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   }
-  
-   else 
+  else 
    {
-   
-      tft.setCursor(0,30);
-      tft.print("CPU Temp C ");
-      tft.print(memory[0x50]);
-      
+    tft.setCursor(0,30);
+    tft.print("CPU Temp C ");
+    tft.print(memory[0x50]);
+    tft.print("    ");
     }
   
   tft.setCursor(0,40);
@@ -237,36 +244,62 @@ void display_knowns()
   
   tft.setCursor(0,70);
   //intel QCODE location tft.print("QCODE #");tft.print(memory[0x10]);
-  tft.print("QCODE 1#");tft.print(memory[0x22],HEX);
+  tft.print("QCODE 1#");
+  tft.setTextColor(ST77XX_RED, ST77XX_WHITE);
+  tft.print(memory[0x22],HEX);
+  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+
+  
   tft.setCursor(0,80);
+  //memory location 0x06 is 1 when system is in POST, 0 when booting
   if (memory[0x6]==1)
     {
+      //System is still in EUFI setup mode
+      tft.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
       tft.print("EUFI Mode: ");
+      tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
     }
   else
-      tft.print("BOOT Mode: ");
+  {
+    // System has completed POST and is now booting 
+    tft.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
+    tft.print("BOOT Mode: ");
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  }
   for (int xn=0;xn<7;xn++)
   {
     tft.print(memory[xn],HEX);
     tft.print(" ");
   }
   tft.setCursor(0,90);
-  tft.print("MEM 0x7:");tft.print(memory[0x7]);
+  //this is looking at specific memory locations 
+  //tft.print("MEM ");
+  //Specific memory locations to be monitored, reduces screen clutter
+  //tft.print("0x7:");tft.print(memory[0x7]);
   //tft.print(" 0x22:");tft.print(memory[0x22]);
-  tft.print(" 0xff:");tft.print(memory[0xff]);
+  //tft.print(" 0xff:");tft.print(memory[0xff]);
 
-  tft.setCursor(0,100);
-  
-    for (int xn=0x20;xn<0x30;xn++)
+  //tft.setCursor(0,100);
+  //this section just displays a memory dump,few locations , monitor during adjustment/usage/boot process 
+  int start =0x20;
+    for (int xn=start;xn<(start+0xf);xn++)
   {
-    tft.print(memory[xn]),HEX;
+    tft.print(memory[xn],HEX);
     tft.print(":");
   }
+  tft.setCursor(0,110);
+   int starttwo =0x30;
+    for (int xn=starttwo;xn<(starttwo+0xf);xn++)
+  {
+    tft.print(memory[xn],HEX);
+    tft.print(":");
+  } 
 }
 
 void setup(void) {
   Serial.begin(115200);
-  Serial.print(F("RO_EXT test one"));
+  Serial.print("Rog Eye, Open Source ROG_EXT adapter V");
+  Serial.println(ROG_VERSION);
 
   tft.initR(INITR_BLACKTAB);      // Init ST7735S chip, black tab
   pinMode(TFT_BACKLIGHT, OUTPUT);
@@ -286,262 +319,18 @@ void setup(void) {
   //setRoation(1);
   tft.fillScreen(ST77XX_BLACK);
   tft.setRotation(1); //MPT-7210A rotation
-
-  testdrawtext("Power On - activating I2C Bridge ", ST77XX_WHITE);
-  delay(1000);
   for (int count=0;count < MEM_SIZE;count++){memory[count]=0;}
   Wire.begin(ROG_EXT);                // join i2c bus with address #8
   Wire.onReceive(receiveEvent); // register event
   //Serial.begin(115200);           // start serial for output
   pinMode(SCL, INPUT_PULLUP);  // remove internal pullup
+  //On my screen i have to enable backlight
   pinMode(17,OUTPUT);
   digitalWrite(17, HIGH);
-  tft.fillScreen(ST77XX_BLACK);
-  
+
 }
 
 void loop() {
-//  tft.invertDisplay(true);
-//  delay(500);
- // tft.invertDisplay(false);
- 
   delay(50);
- //  tft.fillScreen(ST77XX_BLACK);
-  //tftPrintTest();
- // dump_memory();
- //draw_grid();
- 
  display_knowns();
-}
-
-void demo()
-{
-  // tft print function!
- // tftPrintTest();
-  //delay(4000);
-
-
-  // a single pixel
-  tft.drawPixel(tft.width()/2, tft.height()/2, ST77XX_GREEN);
-  delay(500);
-
-  // line draw test
-  testlines(ST77XX_YELLOW);
-  delay(500);
-
-  // optimized lines
-  testfastlines(ST77XX_RED, ST77XX_BLUE);
-  delay(500);
-
-  testdrawrects(ST77XX_GREEN);
-  delay(500);
-
-  testfillrects(ST77XX_YELLOW, ST77XX_MAGENTA);
-  delay(500);
-
-  tft.fillScreen(ST77XX_BLACK);
-  testfillcircles(10, ST77XX_BLUE);
-  testdrawcircles(10, ST77XX_WHITE);
-  delay(500);
-
-  testroundrects();
-  delay(500);
-
-  testtriangles();
-  delay(500);
-
-  mediabuttons();
-  delay(500);
-
-  //Serial.println("done");
-  delay(1000);
-  
-}
-void testlines(uint16_t color) {
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=0; x < tft.width(); x+=6) {
-    tft.drawLine(0, 0, x, tft.height()-1, color);
-    delay(0);
-  }
-  for (int16_t y=0; y < tft.height(); y+=6) {
-    tft.drawLine(0, 0, tft.width()-1, y, color);
-    delay(0);
-  }
-
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=0; x < tft.width(); x+=6) {
-    tft.drawLine(tft.width()-1, 0, x, tft.height()-1, color);
-    delay(0);
-  }
-  for (int16_t y=0; y < tft.height(); y+=6) {
-    tft.drawLine(tft.width()-1, 0, 0, y, color);
-    delay(0);
-  }
-
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=0; x < tft.width(); x+=6) {
-    tft.drawLine(0, tft.height()-1, x, 0, color);
-    delay(0);
-  }
-  for (int16_t y=0; y < tft.height(); y+=6) {
-    tft.drawLine(0, tft.height()-1, tft.width()-1, y, color);
-    delay(0);
-  }
-
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=0; x < tft.width(); x+=6) {
-    tft.drawLine(tft.width()-1, tft.height()-1, x, 0, color);
-    delay(0);
-  }
-  for (int16_t y=0; y < tft.height(); y+=6) {
-    tft.drawLine(tft.width()-1, tft.height()-1, 0, y, color);
-    delay(0);
-  }
-}
-
-void testdrawtext(char *text, uint16_t color) {
-  tft.setCursor(0, 0);
-  tft.setTextColor(color);
-  tft.setTextWrap(true);
-  tft.print(text);
-}
-
-void testfastlines(uint16_t color1, uint16_t color2) {
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t y=0; y < tft.height(); y+=5) {
-    tft.drawFastHLine(0, y, tft.width(), color1);
-  }
-  for (int16_t x=0; x < tft.width(); x+=5) {
-    tft.drawFastVLine(x, 0, tft.height(), color2);
-  }
-}
-
-void testdrawrects(uint16_t color) {
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=0; x < tft.width(); x+=6) {
-    tft.drawRect(tft.width()/2 -x/2, tft.height()/2 -x/2 , x, x, color);
-  }
-}
-
-void testfillrects(uint16_t color1, uint16_t color2) {
-  tft.fillScreen(ST77XX_BLACK);
-  for (int16_t x=tft.width()-1; x > 6; x-=6) {
-    tft.fillRect(tft.width()/2 -x/2, tft.height()/2 -x/2 , x, x, color1);
-    tft.drawRect(tft.width()/2 -x/2, tft.height()/2 -x/2 , x, x, color2);
-  }
-}
-
-void testfillcircles(uint8_t radius, uint16_t color) {
-  for (int16_t x=radius; x < tft.width(); x+=radius*2) {
-    for (int16_t y=radius; y < tft.height(); y+=radius*2) {
-      tft.fillCircle(x, y, radius, color);
-    }
-  }
-}
-
-void testdrawcircles(uint8_t radius, uint16_t color) {
-  for (int16_t x=0; x < tft.width()+radius; x+=radius*2) {
-    for (int16_t y=0; y < tft.height()+radius; y+=radius*2) {
-      tft.drawCircle(x, y, radius, color);
-    }
-  }
-}
-
-void testtriangles() {
-  tft.fillScreen(ST77XX_BLACK);
-  int color = 0xF800;
-  int t;
-  int w = tft.width()/2;
-  int x = tft.height()-1;
-  int y = 0;
-  int z = tft.width();
-  for(t = 0 ; t <= 15; t++) {
-    tft.drawTriangle(w, y, y, x, z, x, color);
-    x-=4;
-    y+=4;
-    z-=4;
-    color+=100;
-  }
-}
-
-void testroundrects() {
-  tft.fillScreen(ST77XX_BLACK);
-  int color = 100;
-  int i;
-  int t;
-  for(t = 0 ; t <= 4; t+=1) {
-    int x = 0;
-    int y = 0;
-    int w = tft.width()-2;
-    int h = tft.height()-2;
-    for(i = 0 ; i <= 16; i+=1) {
-      tft.drawRoundRect(x, y, w, h, 5, color);
-      x+=2;
-      y+=3;
-      w-=4;
-      h-=6;
-      color+=1100;
-    }
-    color+=100;
-  }
-}
-
-void tftPrintTest() {
-  tft.setTextWrap(false);
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setCursor(0, 30);
-  tft.setTextColor(ST77XX_RED);
-  tft.setTextSize(1);
-  tft.println("Hello World!");
-  tft.setTextColor(ST77XX_YELLOW);
-  tft.setTextSize(2);
-  tft.println("Hello World!");
-  tft.setTextColor(ST77XX_GREEN);
-  tft.setTextSize(2);
-  tft.println("Hello World!");
-  tft.setTextColor(ST77XX_BLUE);
-  tft.setTextSize(2);
-  tft.print(1234.567);
-  delay(1500);
-  tft.setCursor(0, 0);
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setTextSize(0);
-  tft.println("Hello World!");
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_GREEN);
-  tft.print(p, 6);
-  tft.println(" Want pi?");
-  tft.println(" ");
-  tft.print(8675309, HEX); // print 8,675,309 out in HEX!
-  tft.println(" Print HEX!");
-  tft.println(" ");
-  tft.setTextColor(ST77XX_WHITE);
-  tft.println("Sketch has been");
-  tft.println("running for: ");
-  tft.setTextColor(ST77XX_MAGENTA);
-  tft.print(millis() / 1000);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print(" seconds.");
-}
-
-void mediabuttons() {
-  // play
-  tft.fillScreen(ST77XX_BLACK);
-  tft.fillRoundRect(25, 10, 78, 60, 8, ST77XX_WHITE);
-  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_RED);
-  delay(500);
-  // pause
-  tft.fillRoundRect(25, 90, 78, 60, 8, ST77XX_WHITE);
-  tft.fillRoundRect(39, 98, 20, 45, 5, ST77XX_GREEN);
-  tft.fillRoundRect(69, 98, 20, 45, 5, ST77XX_GREEN);
-  delay(500);
-  // play color
-  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_BLUE);
-  delay(50);
-  // pause color
-  tft.fillRoundRect(39, 98, 20, 45, 5, ST77XX_RED);
-  tft.fillRoundRect(69, 98, 20, 45, 5, ST77XX_RED);
-  // play color
-  tft.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_GREEN);
 }
