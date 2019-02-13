@@ -70,10 +70,15 @@ Math on cpu voltage is known to be different, hence the CPU_TYPE define (host mo
 QCode location also different between AMD and intel, possible reason is firmware limits of ROG_EXT device or OEM wanting to sell more panels like intel hide the fact motherboards can be compatible between generations 
 
 
+Rog Connector pinouts 
+```
     =========UP========
 
  1 3 5 7 gap 1  2  3  4  5
+ 
  2 4 6 8 gap 6  7  8  9  nc
+ ```
+ 
  
 Asus Front Base Pins/Colours At Motherboard Side
 Functions supplied where possible, 
