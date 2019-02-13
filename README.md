@@ -36,6 +36,7 @@ Address conversions Between Busppirate sniffer and Arduino I2C, Address 0x4A in 
  * Known Addresses are :-
  *
  *
+ ```
 typedef struct {
     int addr;
     char bytes;
@@ -64,6 +65,7 @@ addrStruct addresses[] = {
     {0x50, 1, TTEMP,  "CPU Temp"},//Cpu Temp direct value 
     {0x60, 2, TFAN,   "CPU Fanspeed"},//CPU Fan speed Formula is (memory[0x60] << 8 | memory[0x61])
 }; 
+```
 Math on cpu voltage is known to be different, hence the CPU_TYPE define (host motherboard cpu not the arduino MCU device) 
 QCode location also different between AMD and intel, possible reason is firmware limits of ROG_EXT device or OEM wanting to sell more panels like intel hide the fact motherboards can be compatible between generations 
 
