@@ -70,7 +70,7 @@ Math on cpu voltage is known to be different, hence the CPU_TYPE define (host mo
 QCode location also different between AMD and intel, possible reason is firmware limits of ROG_EXT device or OEM wanting to sell more panels like intel hide the fact motherboards can be compatible between generations 
 
 
-Rog Connector pinouts 
+Rog Connector pinouts  (see rog_ext_maximus image ) 
 ```
     =========UP========
 
@@ -102,7 +102,7 @@ Left Connector :-
 8 shield 
 ``` 
 
-Right Connector :
+Right Connector :-
 ```
 1 +5ve
 
@@ -110,11 +110,11 @@ Right Connector :
 
 3 usb A
 
-4 usb A
+4 NC
 
 5 usb B
 
-6 usb B
+6 NC
 
 7 GND
 
@@ -125,21 +125,8 @@ Right Connector :
 10 Same As pin 9 but not present
 ```
 
-
-Right Side (USB11) //Note often only the upper USB 1-4 row is connected to anything
-1 USB 5+v red 
-2 data wh
-3 data gn
-4 gnd
-5 Unknown
-
-6 USB 5+v red
-7 Data wh
-8 Data gn
-9 Gnd
-10 n/c (key pin) 
-
-*/
+On Actual Front_Base and OC/Panel units the system detects USB and switches to update mode , thats why manuals request you connect to normal USB pin header to update the devices. 
+when USB A/B is missing the device switches to normal function
 
 ```
 CPU:Arduino Compatible Device Modded for 3.3V (old screen from a broken RGB Gobi lamp with DMX 512 function !!!, screen has built in arduino chip and buttons , bonus )
@@ -153,7 +140,7 @@ CPU:Arduino Compatible Device Modded for 3.3V (old screen from a broken RGB Gobi
 - [x] Blow up CPU in testing so other's dont have too :-(
 - [x] Prove theory and provide working test code & schematic 
 - [ ] Add more sensors
-- [ ] Add lcd code 
+- [x] Add lcd code 
 
 - [x] add schematics in png format 
 - [ ] Add additional protocols
@@ -163,7 +150,7 @@ CPU:Arduino Compatible Device Modded for 3.3V (old screen from a broken RGB Gobi
 
 - [ ] EEPROM saving preference
 
-- [ ] Tidy up the code , remove testing data 
+- [x] Tidy up the code , remove testing data 
 
 
 Tested device 
