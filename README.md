@@ -74,25 +74,57 @@ Rog Connector pinouts
 ```
     =========UP========
 
- 1 3 5 7 gap 1  2  3  4  5
+ 1 3 5 7 gap 1  3  5  7  9
  
- 2 4 6 8 gap 6  7  8  9  nc
+ 2 4 6 8 gap 2  4  6  8  nc
  ```
  
  
 Asus Front Base Pins/Colours At Motherboard Side
 Functions supplied where possible, 
 
-Left //I2C Bus and ENABLE
+Left Connector :-
+```
 1 Green 1
+
 3 Red 1  
+
 5 Yellow (SDA i2c)
+
 7 gray  (SCL i2c)
 
 2 White 1/black (splits too front base) 
+
 4 orange ENABLE (activate i2c output)
+
 6 blue
+
 8 shield 
+``` 
+
+Right Connector :
+```
+1 +5ve
+
+2 +5ve
+
+3 usb A
+
+4 usb A
+
+5 usb B
+
+6 usb B
+
+7 GND
+
+8 GND
+
+9 Not connect/KEY for rotation of plug 
+
+10 Same As pin 9 but not present
+```
+
 
 Right Side (USB11) //Note often only the upper USB 1-4 row is connected to anything
 1 USB 5+v red 
