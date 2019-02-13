@@ -6,17 +6,24 @@
 #include <SPI.h>
 
 #include <Wire.h>
-#define ROG_VERSION 0.15
-#define CPU_TYPE AMD
+#define ROG_VERSION 0.18
+/*
+#define CPU_TYPE AMDKK
 
-#if CPU_TYPE == AMD
+#if CPU_TYPE == INTEL_X
   #define VDIV1 0.6475
   #define VDIV2 0.0025
 #else
   #define VDIV1 1.28
   #define VDIV2 0.005
 #endif
+*/
 
+//Docs online say vdiv 0.6475/0.00025 for amd but i found 1.28/0.005 displayed correct for C7H/2700x AMD 
+//Voltage divider for CPUV/DRAMV
+#define VDIV1 1.28
+#define VDIV2 0.005
+//clock divider fro BLCLK 
 #define CDIV1 25.6
 #define CDIV2 0.1
 
@@ -28,18 +35,21 @@
 #define TQCODE   0x05
 #define TOPEID   0x06
 
+//this is the i2c address the system writes to, there are others on the bus but for saftey , DONT WRITE TO THE BUS 
 #define ROG_EXT 0x4a
-//currently only known 
+//currently only known addresses, this is legacy from github.com/kevinlekiller , i dont understand its usage in code along with the struct but it's layout has been handy for notes
 #define ADDRESSES 11
 
 
 
 
 byte buf1, buf2;
-#define MEM_SIZE 0x1fe
+//memory so far is only writing up to 0xff , option here thought ot double that for testing purposes only , save ram, it's a-rduino 
+//#define MEM_SIZE 0x1fe
+#define MEM_SIZE 0xff
 byte memory[MEM_SIZE] {};
 byte alt_memory[MEM_SIZE] {};
-
+byte REQ_REC;
 
 /*
  * pin Outs At ROG Connector
@@ -69,6 +79,7 @@ D5,D6,D7,D8 plus one for back light like D1
 #define TFT_DC   9
 #define TFT_RST  7
 #define TFT_BACKLIGHT 8
+#define ROG_ENABLE 17 
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC,TFT_RST);
 //i2cdump 1 0x4a
@@ -99,17 +110,44 @@ typedef struct {
     char * name;
 } addrStruct;
 
+/*
+Chipset   Motherboard Model   Full Function Partial Function  Remark
+Intel Z97 Maximus VII Formula           P         *V1=In put Voltage; V2=Cache Voltage
+Intel Z97 Maximus VII Gene              P           *V1=In put Voltage; V2=Cache Voltage
+Intel Z97 Maximus VII Hero              P           *No V1/V2, Only have BCLK, Hotwire.
+Intel Z97 Maximus VII Impact            P         *V1=In put Voltage; V2=Cache Voltage
+Intel Z97 Maximus VII Ranger            P         *No V1/V2, Only have BCLK, Hotwire.
+Intel X79 Rampage IV Black Edition      P         *V1=VTT_CPU; V2=DRAM_AB; DRAM=DRAM_CD
+Intel X99 Rampage V Extreme 　          P           *V1=In put Voltage; V2=DRAM_AB; DRAM=DRAM_CD
+Intel Z170  Maximus VIII Extreme        V             　 *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Extreme Assembly V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Hero       V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Hero Alpha     V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Ranger       V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Gene       V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Impact       V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Intel Z170  Maximus VIII Formula      V 　             *V1=SA(System Agent Voltage); V2=IO(VCCIO)
+Function differs between OC/Panel 1/2, Front Base, OC Panel(silver buttons) devices.
+Seems Mobo firmware related and not really device related 
+
+My Dump on differs at byte 0x6 (1 during post) and 0xff which is random 
+other than that they are all the same apart from variable mem locations, eg fan speeds at 0x60 High byte and 0x61 lower byte 
+
+
+
+
 addrStruct addresses[ADDRESSES] = {
     {0x00, 1, TOPEID, "OPEID"},
 //    {0x01, 1
  //   [0x06 ,1, POSTMODE,"POST MODE"},
 //    {0x07, 1
-//0x10 location Valid for Intel Only it seems or C6H and prior boards. possible candidate is 0x22
+//0x10 location Valid for Intel Only it seems or C6H and prior boards. possible candidate is 0x??
     {0x10, 1, TQCODE, "QCODE"},
 //    {0x12, 1
     {0x20, 1, TRATIO, "CPU Ratio"},
+//  {0x21,1,unknwn,"SAME AS CPU RATIO"},
 //    {0x22, 1
-// 0x22 could be AMD qcode location 
+// 0x22 ,1, ??could be AMD qcode location 
     {0x24, 1, TRATIO, "Cache Ratio"},
     {0x28, 2, TCLOCK, "BCLK"},
 //    {0x2a, 2 ; PCIEBCLK?
@@ -133,36 +171,44 @@ addrStruct addresses[ADDRESSES] = {
     {0x60, 2, TFAN,   "CPU Fanspeed"},
 // {0xff,1,UNKWN,"UNKWN"},
 };
-
+*/
 
 float p = 3.1415926;
 
 void receiveEvent(int howMany) {
   
-  int bytes=0;
-  int myvars[6]={0,0,0,0,0,0};
+  byte bytes=0;
+  byte ROG_Bytes[6]={0,0,0,0,0,0};
 
-  int ROG_addr = 0;
-  int ROG_value =0;
+//  byte ROG_addr = 0;
+//  byte ROG_value =0;
 //The ROG_EXT enable boards write to device 0x4A with the values of cpu v,temp etc. from 0x00 to 0xff , if it's two bit i2c address then i've not figured the write past 0xff trigger yet
 //normally receive two bytes from i2c , first is memory location and rest is data
 //arduino acts as I2c memory device and then we read that memory[x] back and display it, simple really , dont need the Elmor/Overlay.live labs snake oil  
  
  //For Debug, send serial command every time the Motherboard makes a request 
  //Serial.println("Start Event "); 
-  while(Wire.available())    // slave may send less than requested
+  while(Wire.available())    // master may send less than requested
     { 
-      myvars[bytes] = Wire.read();
+      ROG_Bytes[bytes] = Wire.read();
       bytes++;
     }
   //first byte is memory location that the Motherboard is writing to , second is value 
-  memory[myvars[0]]=myvars[1];
+  memory[ROG_Bytes[0]]=ROG_Bytes[1];
 
   //debug output
-   // Serial.println();
+    Serial.print(ROG_Bytes[0],HEX); Serial.print(" ");Serial.print(ROG_Bytes[1],HEX);Serial.print(" ");Serial.println(bytes);
   //Serial.println("End Event ");
 
 }
+
+void requestEvent() {
+  
+  REQ_REC=1;
+  Serial.println("req Event ");
+
+}
+
 void dump_memory()
 {
   //not really usefull function on small screen, works best on larger screen to see all/most of memory locations change or use serial and a good terminal app that support ansi functions (BBS RULEZ)
@@ -198,10 +244,28 @@ void display_knowns()
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   tft.setTextSize(1);
   tft.setCursor(0, 0);
-  tft.print("CPU V"); tft.print(((memory[0x40] * VDIV1) + (memory[0x41] * VDIV2)), 4);
+  tft.print("CPU V"); tft.print(((memory[0x40] * VDIV1) + (memory[0x41] * VDIV2)),4);
+  tft.print(" ¯ ");
+  switch (memory[0x2]) {
+        case 0x1:
+              tft.print("M6E Intel");
+              break;
+        case 0x2:
+              tft.print("C6H AMD");
+              break;
+        case 0xF:
+              tft.print("C7H AMD");
+              break;
+        default:
+              tft.print("reboot");
+              break;
+  }   
+              
+               
+   
  
   tft.setCursor(0,10);
-  tft.print("DRAM V");tft.print(((memory[0x48] * VDIV1) + (memory[0x49] * VDIV2)), 4);
+  tft.print("DRAM V");tft.print(((memory[0x48] * VDIV1) + (memory[0x49] * VDIV2)),4);
   
   tft.setCursor(0,20);
   tft.print("CPU FAN RPM ");tft.print((memory[0x60] << 8 | memory[0x61]));
@@ -234,19 +298,25 @@ void display_knowns()
     }
   
   tft.setCursor(0,40);
-  tft.print("BLCLK MHz ");tft.print(((memory[0x28] * CDIV1) + (memory[0x29] * CDIV2)), 2);
+    tft.print("CPU Mhz ");tft.print((memory[0x20]*((memory[0x28] * CDIV1) + (memory[0x29] * CDIV2))));
+
 
   tft.setCursor(0,50);
-  tft.print("CPU Mhz ");tft.print((memory[0x20]*((memory[0x28] * CDIV1) + (memory[0x29] * CDIV2))));
+  //tft.print("BLCLK MHz ");tft.print(((memory[0x28] * CDIV1) + (memory[0x29] * CDIV2)), 2);
+  //TVolt 1
+  //CPU SOC on AMD C7H board
+  tft.print("CPU SOC ");tft.print(((memory[0x30] * VDIV1) + (memory[0x31] * VDIV2)),3);
 
   tft.setCursor(0,60);
-  tft.print("Clk Multiplier x");tft.print(memory[0x20]);
+  //tft.print("Clk Multiplier x");tft.print(memory[0x20]);
+  //VCCIO = Tvolt 2
+  tft.print("VCCIO  ");tft.print(((memory[0x38] * VDIV1) + (memory[0x39] * VDIV2)),3);
   
   tft.setCursor(0,70);
   //intel QCODE location tft.print("QCODE #");tft.print(memory[0x10]);
   tft.print("QCODE 1#");
   tft.setTextColor(ST77XX_RED, ST77XX_WHITE);
-  tft.print(memory[0x22],HEX);
+  tft.print(memory[0x10],HEX);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
   
@@ -271,22 +341,34 @@ void display_knowns()
     tft.print(memory[xn],HEX);
     tft.print(" ");
   }
+  
   tft.setCursor(0,90);
   //this is looking at specific memory locations 
-  //tft.print("MEM ");
+  tft.print("MEM ");
   //Specific memory locations to be monitored, reduces screen clutter
-  //tft.print("0x7:");tft.print(memory[0x7]);
-  //tft.print(" 0x22:");tft.print(memory[0x22]);
+  tft.print("0x40:");tft.print(memory[0x40]);
+  tft.print(" 0x41:");tft.print(memory[0x41]);
+  tft.setCursor(0,100);
+    tft.print("MEM ");
+  //Specific memory locations to be monitored, reduces screen clutter
+  tft.print("0x48:");tft.print(memory[0x48]);
+  tft.print(" 0x49:");tft.print(memory[0x49]);
+  /*
+   #define VDIV1 0.6475
+   #define VDIV2 0.0025
+   */
   //tft.print(" 0xff:");tft.print(memory[0xff]);
 
-  //tft.setCursor(0,100);
+  tft.setCursor(0,110);
   //this section just displays a memory dump,few locations , monitor during adjustment/usage/boot process 
-  int start =0x20;
-    for (int xn=start;xn<(start+0xf);xn++)
+  
+  int start =0x0;
+    for (int xn=start;xn<(start+0x10);xn++)
   {
     tft.print(memory[xn],HEX);
     tft.print(":");
   }
+  /*
   tft.setCursor(0,110);
    int starttwo =0x30;
     for (int xn=starttwo;xn<(starttwo+0xf);xn++)
@@ -294,43 +376,35 @@ void display_knowns()
     tft.print(memory[xn],HEX);
     tft.print(":");
   } 
+  */
 }
 
 void setup(void) {
   Serial.begin(115200);
   Serial.print("Rog Eye, Open Source ROG_EXT adapter V");
   Serial.println(ROG_VERSION);
-
   tft.initR(INITR_BLACKTAB);      // Init ST7735S chip, black tab
-  pinMode(TFT_BACKLIGHT, OUTPUT);
-  digitalWrite(TFT_BACKLIGHT, HIGH); // Backlight on
-  
-
-  Serial.println(F("Initialized"));
-
-  uint16_t time = millis();
-  tft.fillScreen(ST77XX_BLACK);
-  time = millis() - time;
-
-  Serial.println(time, DEC);
-  delay(500);
-
-  // large block of text
-  //setRoation(1);
   tft.fillScreen(ST77XX_BLACK);
   tft.setRotation(1); //MPT-7210A rotation
   for (int count=0;count < MEM_SIZE;count++){memory[count]=0;}
   Wire.begin(ROG_EXT);                // join i2c bus with address #8
   Wire.onReceive(receiveEvent); // register event
-  //Serial.begin(115200);           // start serial for output
+  Wire.onRequest(requestEvent);
+  REQ_REC=0;
   pinMode(SCL, INPUT_PULLUP);  // remove internal pullup
   //On my screen i have to enable backlight
-  pinMode(17,OUTPUT);
-  digitalWrite(17, HIGH);
+  pinMode(ROG_ENABLE,OUTPUT);
+  digitalWrite(ROG_ENABLE, HIGH);
+  pinMode(TFT_BACKLIGHT, OUTPUT);
+  digitalWrite(TFT_BACKLIGHT, HIGH); // Backlight on
 
 }
 
 void loop() {
-  delay(50);
+  delay(5);
+  if (REQ_REC==1)
+  {
+    tft.invertDisplay(true);
+  }
  display_knowns();
 }
